@@ -5,6 +5,6 @@
 // FIGYELEM: soha ne másold ide a "service_role" kulcsot!
 // Az anon kulcs publikus, a védelmet a bejelentkezés és az adatbázis szabályai adják.
 window.APP_CONFIG = {
-  SUPABASE_URL: "https://kwvtcufrsunxheuiofnq.supabase.co/rest/v1",
+  SUPABASE_URL: "https://kwvtcufrsunxheuiofnq.supabase.co",
   SUPABASE_ANON_KEY: "sb_publishable_Ezmt2Zt9w7kN8_2hjdlJQA_obFs4QzY"
 };
