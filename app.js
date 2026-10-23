@@ -445,7 +445,7 @@ function schedMount() {
     '<div class="weeknav"><button class="btn" id="wPrev">‹ Előző</button><button class="btn" id="wToday">Ez a hét</button><button class="btn" id="wNext">Következő ›</button>' +
     '<h2 id="weekLabel"></h2><span class="grow" style="flex:1"></span>' +
     (admin ? '<button class="btn" id="wCopy" title="A megjelenített hét beosztását átmásolja a következő hétre">Hét másolása a következőre</button>' : '') + '</div>' +
-    '<div class="legend"><span><i class="dot" style="background:#4a90e2"></i>Csoport</span><span><i class="dot" style="background:#8b5cf6"></i>Irodai munka</span><span><i class="dot" style="background:#f08a3c"></i>Fizikai munka</span>' +
+    '<div class="legend"><span><i class="dot" style="background:var(--green)"></i>Csoport – van előleg</span><span><i class="dot" style="background:var(--accent)"></i>Csoport – nincs előleg</span><span><i class="dot" style="background:var(--red)"></i>Escape</span><span><i class="dot" style="background:#8b5cf6"></i>Irodai munka</span><span><i class="dot" style="background:#f08a3c"></i>Fizikai munka</span>' +
     (admin ? '' : '<span>(a beosztást az admin szerkeszti)</span>') + '</div>' +
     '<div class="grid7" id="weekGrid"></div><div class="card sum" id="monthSum"></div>';
   function go(ws) { S.weekStart = ws; reloadTable('schedule'); schedUpdate(); }
@@ -464,6 +464,14 @@ function schedMount() {
   schedUpdate();
 }
 
+function entryClass(e) {
+  if (e.kind === 'csoport') {
+    if (/escape/i.test(e.title || '')) return 'k-escape';
+    return e.deposit ? 'k-deposit' : 'k-nodeposit';
+  }
+  return 'k-' + e.kind;
+}
+
 function sortEntry(a, b) {
   return (KIND_ORDER[a.kind] - KIND_ORDER[b.kind]) || String(a.time_label || '').localeCompare(String(b.time_label || ''));
 }
@@ -480,8 +488,8 @@ function schedUpdate() {
       '<div class="dhead"><b>' + DAYS[i] + '</b><span>' + fmtDM(d) + '</span>' +
       (admin ? '<button class="icon" data-add="' + key + '" title="Hozzáadás">＋</button>' : '') + '</div>' +
       (es.map(function (e) {
-        return '<div class="entry k-' + e.kind + (admin ? ' adm' : '') + '" data-entry="' + e.id + '"' + (e.note ? ' title="' + esc(e.note) + '"' : '') + '>' +
-          '<div class="ek">' + KINDS[e.kind] + (e.time_label ? ' · ' + esc(e.time_label) : '') + '</div>' +
+        return '<div class="entry ' + entryClass(e) + (admin ? ' adm' : '') + '" data-entry="' + e.id + '"' + (e.note ? ' title="' + esc(e.note) + '"' : '') + '>' +
+          '<div class="ek">' + KINDS[e.kind] + (e.time_label ? ' · ' + esc(e.time_label) : '') + (e.kind === 'csoport' && e.deposit ? ' · előleg ✔' : '') + '</div>' +
           (e.title ? '<div class="et">' + esc(e.title) + '</div>' : '') +
           ((e.staff && e.staff.length) ? '<div class="staff">' + e.staff.map(function (n) { return '<span class="chip">' + esc(n) + '</span>'; }).join('') + '</div>' : '') + '</div>';
       }).join('') || '<div class="empty small">–</div>') + '</div>';
@@ -520,12 +528,16 @@ function openEntry(id, day) {
       return '<option value="' + k + '"' + (e && e.kind === k ? ' selected' : '') + '>' + KINDS[k] + '</option>';
     }).join('') + '</select></label></div>' +
     '<div class="row"><label>Időpont<input type="text" name="time_label" placeholder="pl. 14:00–17:00" value="' + esc(e ? e.time_label : '') + '"></label>' +
-    '<label>Esemény / csoport<input type="text" name="title" placeholder="pl. Szülinap – Netflix Copii" value="' + esc(e ? e.title : '') + '"></label></div>' +
+    '<label>Esemény / csoport<input type="text" name="title" placeholder="pl. Szülinap – Netflix Copii, vagy Escape" value="' + esc(e ? e.title : '') + '"></label></div>' +
+    '<label class="inline" id="depWrap"><input type="checkbox" name="deposit"' + (e && e.deposit ? ' checked' : '') + '> Előleg befizetve</label>' +
     '<label>Kik vesznek részt (vesszővel elválasztva)<input type="text" name="staff" id="staffIn" value="' + esc(e ? (e.staff || []).join(', ') : '') + '"></label>' +
     (names.length ? '<div class="suggest" id="sug">' + names.map(function (n) { return '<button type="button" data-n="' + esc(n) + '">+ ' + esc(n) + '</button>'; }).join('') + '</div>' : '') +
     '<label>Megjegyzés<textarea name="note" rows="2">' + esc(e ? e.note : '') + '</textarea></label>' +
     '<div class="actions">' + (e ? '<button type="button" class="btn danger" id="delE">Törlés</button>' : '') + '<span class="sp"></span>' +
     '<button type="button" class="btn" data-close>Mégse</button><button class="btn primary" type="submit">Mentés</button></div></form>');
+  var kindSel = $('[name=kind]', m), depWrap = $('#depWrap', m);
+  function syncDep() { depWrap.style.display = kindSel.value === 'csoport' ? '' : 'none'; }
+  kindSel.onchange = syncDep; syncDep();
   var sug = $('#sug', m);
   if (sug) sug.onclick = function (ev) {
     var b = ev.target.closest('[data-n]'); if (!b) return;
@@ -538,7 +550,7 @@ function openEntry(id, day) {
     ev.preventDefault();
     var fd = new FormData(ev.target);
     var row = {
-      day: fd.get('day'), kind: fd.get('kind'), time_label: String(fd.get('time_label')).trim() || null,
+      day: fd.get('day'), kind: fd.get('kind'), deposit: fd.get('kind') === 'csoport' && !!fd.get('deposit'), time_label: String(fd.get('time_label')).trim() || null,
       title: String(fd.get('title')).trim() || null, note: String(fd.get('note')).trim() || null,
       staff: String(fd.get('staff')).split(',').map(function (s) { return s.trim(); }).filter(Boolean)
     };
@@ -562,7 +574,7 @@ function copyWeek() {
   if (!es.length) { toast('Ezen a héten nincs mit másolni.', true); return; }
   if (!confirm(es.length + ' beosztás átmásolása a következő hétre? (A már meglévőket nem törli.)')) return;
   var rows = es.map(function (e) {
-    return { day: iso(addDays(parseDay(e.day), 7)), kind: e.kind, time_label: e.time_label, title: e.title, staff: e.staff, note: e.note };
+    return { day: iso(addDays(parseDay(e.day), 7)), kind: e.kind, deposit: false, time_label: e.time_label, title: e.title, staff: e.staff, note: e.note };
   });
   sb.from('schedule').insert(rows).then(function (r) {
     if (r.error) toast('Hiba: ' + r.error.message, true);
@@ -627,7 +639,7 @@ function procUpdate() {
       });
       if (!items.length) return;
       html += '<section class="card cat" style="margin-bottom:12px"><div class="chead" style="cursor:default"><h3>' + esc(c) + '</h3><span class="cnt">' + items.length + ' tétel</span></div>' +
-        '<div class="phead"><span>Tétel</span><span>Készlet</span><span>Minimum</span><span>Úton</span><span>Állapot</span><span></span></div>' +
+        '<div class="phead"><span>Tétel</span><span>Készlet</span><span>Minimum</span><span>Úton</span><span>Könyveléshez</span><span>Állapot</span><span></span></div>' +
         items.map(function (p) {
           var st = pstatus(p), u = p.unit ? ' ' + esc(p.unit) : '';
           return '<div class="prow"><div class="pname"><b>' + esc(p.item) + '</b>' +
@@ -635,6 +647,7 @@ function procUpdate() {
             '<div class="pnum"><span>Készlet</span><b>' + fmtN(p.stock) + u + '</b></div>' +
             '<div class="pnum"><span>Minimum</span>' + (Number(p.min_stock) > 0 ? fmtN(p.min_stock) + u : '–') + '</div>' +
             '<div class="pnum"><span>Úton</span>' + (Number(p.ordered) > 0 ? fmtN(p.ordered) + u : '–') + '</div>' +
+            '<div class="pnum"><span>Könyveléshez</span>' + (p.acct_unit ? esc(p.acct_unit) : '–') + '</div>' +
             '<div class="pst"><span class="badge b-' + st.k + '">' + st.t + '</span></div>' +
             '<div class="pact"><button class="btn small" data-act="' + p.id + '">Rögzítés</button><button class="icon" data-pedit="' + p.id + '" title="Szerkesztés">✎</button></div></div>';
         }).join('') + '</section>';
@@ -704,6 +717,7 @@ function openItem(id) {
     '<datalist id="pcats">' + cats.map(function (c) { return '<option value="' + esc(c) + '">'; }).join('') + '</datalist>' +
     '<div class="row"><label>Mértékegység<input type="text" name="unit" placeholder="db, csomag, l…" value="' + esc(p ? p.unit : '') + '"></label>' +
     '<label>Minimum készlet<input type="number" name="min_stock" step="any" min="0" value="' + esc(p ? p.min_stock : 0) + '"></label></div>' +
+    '<label>Könyveléshez (könyvelési mértékegység)<input type="text" name="acct_unit" placeholder="pl. db, kg, l, doboz" value="' + esc(p ? p.acct_unit : '') + '"></label>' +
     (p ? '' : '<label>Jelenlegi készlet<input type="number" name="stock" step="any" min="0" value="0"></label>') +
     '<label>Beszállító<input type="text" name="supplier" value="' + esc(p ? p.supplier : '') + '"></label>' +
     '<label>Megjegyzés<input type="text" name="note" value="' + esc(p ? p.note : '') + '"></label>' +
@@ -714,7 +728,7 @@ function openItem(id) {
     var fd = new FormData(e.target);
     var row = {
       item: String(fd.get('item')).trim(), category: String(fd.get('category')).trim(), unit: String(fd.get('unit')).trim() || null,
-      min_stock: Number(fd.get('min_stock')) || 0, supplier: String(fd.get('supplier')).trim() || null, note: String(fd.get('note')).trim() || null
+      min_stock: Number(fd.get('min_stock')) || 0, acct_unit: String(fd.get('acct_unit')).trim() || null, supplier: String(fd.get('supplier')).trim() || null, note: String(fd.get('note')).trim() || null
     };
     var req;
     if (p) req = sb.from('procurement').update(row).eq('id', p.id);
